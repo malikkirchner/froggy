@@ -36,8 +36,11 @@ endif()
 include(${CMAKE_BINARY_DIR}/conan.cmake)
 
 conan_cmake_run(REQUIRES
+                    eigen/3.3.7
                     opencv/4.1.1@conan/stable
                     boost/1.72.0
+                    spdlog/1.5.0
+                    fmt/6.2.0
                 BASIC_SETUP
                 BUILD missing)
 
