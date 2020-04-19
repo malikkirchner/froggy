@@ -17,11 +17,9 @@
 ##                                                                                                                    ##
 ##====================================================================================================================##
 
-find_package(OpenCV REQUIRED)
-
-
 add_executable(froggy froggy.cpp)
 target_include_directories( froggy PRIVATE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}> $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>)
+target_link_libraries(froggy ${CONAN_LIBS})
 
 set_property(TARGET froggy PROPERTY CXX_STANDARD 17)
 target_compile_features(froggy PUBLIC cxx_std_17)

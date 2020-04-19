@@ -2,6 +2,7 @@
 
 ## Build and test
 
+Install Conan according to the instructions at [docs.conan.io](https://docs.conan.io/en/latest/installation.html).
 From the repository root run following commands to build and test.
 ```bash
 # make build directory

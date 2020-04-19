@@ -26,5 +26,20 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+# Download automatically, you can also just copy the conan.cmake file
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/conan.cmake")
+   message(STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
+   file(DOWNLOAD "https://github.com/conan-io/cmake-conan/raw/v0.15/conan.cmake"
+                 "${CMAKE_BINARY_DIR}/conan.cmake")
+endif()
+
+include(${CMAKE_BINARY_DIR}/conan.cmake)
+
+conan_cmake_run(REQUIRES
+                    opencv/4.1.1@conan/stable
+                    boost/1.72.0
+                BASIC_SETUP
+                BUILD missing)
+
 add_subdirectory(src)
 add_subdirectory(test)
