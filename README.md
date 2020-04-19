@@ -1,3 +1,5 @@
+![C/C++ CI](https://github.com/malikkirchner/froggy/workflows/C/C++%20CI/badge.svg)
+
 # Froggy
 
 ## Build and test
