@@ -71,10 +71,12 @@ struct Scene {
     std::uint64_t k                   = 0;
     double        initial_rocket_mass = 0.;
 
-    double        zoom   = 1.;
-    std::uint16_t width  = 1500;
-    std::uint16_t height = 1500;
-    std::uint16_t k_step = 100;
+    double        zoom     = 1.;
+    std::uint16_t width    = 1300;
+    std::uint16_t height   = 1300;
+    std::uint16_t origin_x = 100;
+    std::uint16_t origin_y = 100;
+    std::uint16_t k_step   = 100;
 
     std::vector< Coordinates > rocket_trajectory;
     std::vector< Coordinates > earth_trajectory;
@@ -162,67 +164,61 @@ bool leap_frog( Scene& scene ) {
 
 
 cv::Mat draw( const Scene& scene ) {
-    cv::Mat buffer( scene.width, scene.height, CV_32FC3 );
+    cv::Mat buffer( scene.width, scene.height, CV_8UC3 );
 
     {
-        const int x = 0.5 * scene.width + std::round( scene.earth.position.x() * scene.zoom );
-        const int y = 0.5 * scene.height + std::round( scene.earth.position.y() * scene.zoom );
+        const int x = scene.origin_x + std::round( scene.earth.position.x() * scene.zoom );
+        const int y = scene.origin_y + std::round( scene.earth.position.y() * scene.zoom );
         const int r = std::max< int >( std::roundl( scene.earth.radius * scene.zoom ), 1 );
-        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( 1., 0.2, 0.2 ), cv::FILLED, 8, 0 );
+        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( 255, 50, 50 ), cv::FILLED, 8, 0 );
         spdlog::info( "Earth ({},{}|{})", x, y, r );
     }
 
     {
-        const int x = 0.5 * scene.width + std::round( scene.moon.position.x() * scene.zoom );
-        const int y = 0.5 * scene.height + std::round( scene.moon.position.y() * scene.zoom );
+        const int x = scene.origin_x + std::round( scene.moon.position.x() * scene.zoom );
+        const int y = scene.origin_y + std::round( scene.moon.position.y() * scene.zoom );
         const int r = std::max< int >( std::roundl( scene.moon.radius * scene.zoom ), 1 );
-        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( .8, .8, .8 ), cv::FILLED, 8, 0 );
+        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( 200, 200, 200 ), cv::FILLED, 8, 0 );
         spdlog::info( "Moon ({},{}|{})", x, y, r );
     }
 
     {
-        const int x = 0.5 * scene.width + std::round( scene.rocket.position.x() * scene.zoom );
-        const int y = 0.5 * scene.height + std::round( scene.rocket.position.y() * scene.zoom );
+        const int x = scene.origin_x + std::round( scene.rocket.position.x() * scene.zoom );
+        const int y = scene.origin_y + std::round( scene.rocket.position.y() * scene.zoom );
         const int r = std::max< int >( std::roundl( scene.rocket.radius * scene.zoom ), 5 );
-        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( 0., .4, 1. ), cv::FILLED, 8, 0 );
+        cv::circle( buffer, cv::Point( x, y ), r, cv::Scalar( 0, 100, 255 ), cv::FILLED, 8, 0 );
         spdlog::info( "Rocket ({},{}|{})", x, y, r );
     }
 
     const unsigned step = 1;
 
     {
-        for ( unsigned k = step; k < scene.rocket_trajectory.size(); k += step ) {
-            const int x0 =
-                    0.5 * scene.width + std::round( scene.rocket_trajectory[ k - step ].position.x() * scene.zoom );
-            const int y0 =
-                    0.5 * scene.height + std::round( scene.rocket_trajectory[ k - step ].position.y() * scene.zoom );
-            const int x1 = 0.5 * scene.width + std::round( scene.rocket_trajectory[ k ].position.x() * scene.zoom );
-            const int y1 = 0.5 * scene.height + std::round( scene.rocket_trajectory[ k ].position.y() * scene.zoom );
-            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 0.0, 0.4, 1.0 ) );
-        }
-    }
-
-    {
         for ( unsigned k = step; k < scene.earth_trajectory.size(); k += step ) {
-            const int x0 =
-                    0.5 * scene.width + std::round( scene.earth_trajectory[ k - step ].position.x() * scene.zoom );
-            const int y0 =
-                    0.5 * scene.height + std::round( scene.earth_trajectory[ k - step ].position.y() * scene.zoom );
-            const int x1 = 0.5 * scene.width + std::round( scene.earth_trajectory[ k ].position.x() * scene.zoom );
-            const int y1 = 0.5 * scene.height + std::round( scene.earth_trajectory[ k ].position.y() * scene.zoom );
-            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 0.5, 0.2, 0.5 ) );
+            const int x0 = scene.origin_x + std::round( scene.earth_trajectory[ k - step ].position.x() * scene.zoom );
+            const int y0 = scene.origin_y + std::round( scene.earth_trajectory[ k - step ].position.y() * scene.zoom );
+            const int x1 = scene.origin_x + std::round( scene.earth_trajectory[ k ].position.x() * scene.zoom );
+            const int y1 = scene.origin_y + std::round( scene.earth_trajectory[ k ].position.y() * scene.zoom );
+            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 200, 200, 200 ) );
         }
     }
 
     {
         for ( unsigned k = step; k < scene.moon_trajectory.size(); k += step ) {
-            const int x0 =
-                    0.5 * scene.width + std::round( scene.moon_trajectory[ k - step ].position.x() * scene.zoom );
-            const int y0 =
-                    0.5 * scene.height + std::round( scene.moon_trajectory[ k - step ].position.y() * scene.zoom );
-            const int x1 = 0.5 * scene.width + std::round( scene.moon_trajectory[ k ].position.x() * scene.zoom );
-            const int y1 = 0.5 * scene.height + std::round( scene.moon_trajectory[ k ].position.y() * scene.zoom );
-            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 0.5, 0.5, 0.5 ) );
+            const int x0 = scene.origin_x + std::round( scene.moon_trajectory[ k - step ].position.x() * scene.zoom );
+            const int y0 = scene.origin_y + std::round( scene.moon_trajectory[ k - step ].position.y() * scene.zoom );
+            const int x1 = scene.origin_x + std::round( scene.moon_trajectory[ k ].position.x() * scene.zoom );
+            const int y1 = scene.origin_y + std::round( scene.moon_trajectory[ k ].position.y() * scene.zoom );
+            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 200, 200, 200 ) );
+        }
+    }
+
+    {
+        for ( unsigned k = step; k < scene.rocket_trajectory.size(); k += step ) {
+            const int x0 = scene.origin_x + std::round( scene.rocket_trajectory[ k - step ].position.x() * scene.zoom );
+            const int y0 = scene.origin_y + std::round( scene.rocket_trajectory[ k - step ].position.y() * scene.zoom );
+            const int x1 = scene.origin_x + std::round( scene.rocket_trajectory[ k ].position.x() * scene.zoom );
+            const int y1 = scene.origin_y + std::round( scene.rocket_trajectory[ k ].position.y() * scene.zoom );
+            cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), cv::Scalar( 0, 100, 255 ) );
         }
     }
 
@@ -276,7 +272,7 @@ int main() {
     scene.stages.push_back( std::move( main_stage ) );
     scene.stages.push_back( std::move( upper_stage ) );
 
-    scene.zoom = 0.3 * std::sqrt( scene.width * scene.width + scene.height * scene.height ) / d_earth_moon;
+    scene.zoom = 0.6 * std::sqrt( scene.width * scene.width + scene.height * scene.height ) / d_earth_moon;
     scene.initial_rocket_mass = scene.rocket.mass;
 
 #ifdef USE_GTK
@@ -295,6 +291,12 @@ int main() {
     }
 
     const cv::Mat buffer = draw( scene );
+
+    std::vector< int > compression_params;
+    compression_params.push_back( cv::IMWRITE_PNG_COMPRESSION );
+    compression_params.push_back( 6 );
+    cv::imwrite( "moon_shot.png", buffer, compression_params );
+
 #ifdef USE_GTK
     cv::imshow( "froggy", buffer );
     cv::waitKey( 0 );
