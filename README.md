@@ -21,3 +21,8 @@ cmake --build . --target test
 ## Usage
 
 Take a look at `test/unit_test.cpp` for an example.
+
+## Example
+
+A moon shot could look like this. The Earth is blue, the Rocket is orange and the Moon is gray. The lines show the body's trajectories.
+![moon shot](/moon_shot.png)
