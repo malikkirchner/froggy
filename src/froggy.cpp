@@ -39,7 +39,8 @@ constexpr double G                   = 6.6743015e-11;    // m^3/(kg*s^2)
 constexpr double earth_moon_distance = 384'400'000.;     // meters
 
 const cv::Scalar color_rocket{ 0, 100, 255 };
-const cv::Scalar color_rocket_trajectory{ 0, 100, 255 };
+const cv::Scalar color_rocket_trajectory_lo{ 0, 50, 255 };
+const cv::Scalar color_rocket_trajectory_hi{ 0, 255, 255 };
 const cv::Scalar color_earth{ 255, 50, 50 };
 const cv::Scalar color_earth_trajectory{ 200, 200, 200 };
 const cv::Scalar color_moon{ 200, 200, 200 };
@@ -89,6 +90,9 @@ struct Stats {
     double        highest_acceleration       = 0.;
 };
 
+cv::Scalar lerp( const double s, const cv::Scalar& a, const cv::Scalar& b ) {
+    return { a[ 0 ] + s * ( b[ 0 ] - a[ 0 ] ), a[ 1 ] + s * ( b[ 1 ] - a[ 1 ] ), a[ 2 ] + s * ( b[ 2 ] - a[ 2 ] ) };
+}
 
 void draw( cv::Mat& buffer, const Coordinates& center, const double radius, const cv::Scalar& color,
            const ViewPort& view_port, const int thickness = cv::FILLED, const cv::LineTypes line_type = cv::LINE_8 ) {
@@ -112,6 +116,23 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
         const int y0 = view_port.origin.y() + std::round( trajectory[ k - stride ].x.y() * view_port.zoom );
         const int x1 = view_port.origin.x() + std::round( trajectory[ k ].x.x() * view_port.zoom );
         const int y1 = view_port.origin.y() + std::round( trajectory[ k ].x.y() * view_port.zoom );
+        cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
+    }
+}
+
+void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const double v_lo, const double v_hi,
+           const cv::Scalar& color_lo, const cv::Scalar& color_hi, const ViewPort& view_port,
+           const cv::LineTypes line_type = cv::LINE_AA ) {
+    const auto stride = view_port.frame_stride;
+
+    for ( unsigned k = stride; k < trajectory.size(); k += stride ) {
+        const int x0 = view_port.origin.x() + std::round( trajectory[ k - stride ].x.x() * view_port.zoom );
+        const int y0 = view_port.origin.y() + std::round( trajectory[ k - stride ].x.y() * view_port.zoom );
+        const int x1 = view_port.origin.x() + std::round( trajectory[ k ].x.x() * view_port.zoom );
+        const int y1 = view_port.origin.y() + std::round( trajectory[ k ].x.y() * view_port.zoom );
+
+        const double v     = 0.5 * ( trajectory[ k ].v + trajectory[ k - stride ].v ).norm();
+        const auto   color = lerp( ( v - v_lo ) / ( v_hi - v_lo ), color_lo, color_hi );
         cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
     }
 }
@@ -178,7 +199,6 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
     }
 }
 
-
 }    // namespace
 
 
@@ -241,14 +261,17 @@ public:
 
         draw( buffer, earth_trajectory[ 0 ], earth.radius, color_earth_trajectory, view_port, 1, cv::LINE_AA );
         draw( buffer, moon_trajectory[ 0 ], moon.radius, color_moon_trajectory, view_port, 1, cv::LINE_AA );
-        draw( buffer, rocket_trajectory[ 0 ], rocket.radius, color_rocket_trajectory, view_port, 1, cv::LINE_AA );
+
+        draw( buffer, rocket_trajectory[ 0 ], rocket.radius, color_rocket, view_port, 1, cv::LINE_AA );
 
         draw( buffer, moon_trajectory[ stats.closest_rocket_moon_index / view_port.frame_stride ], moon.radius,
               color_moon, view_port, 1, cv::LINE_AA );
 
         draw( buffer, earth_trajectory, color_earth_trajectory, view_port );
         draw( buffer, moon_trajectory, color_moon_trajectory, view_port );
-        draw( buffer, rocket_trajectory, color_rocket_trajectory, view_port );
+
+        draw( buffer, rocket_trajectory, stats.lowest_velocity, stats.highest_velocity, color_rocket_trajectory_lo,
+              color_rocket_trajectory_hi, view_port );
 
         return buffer;
     }
@@ -266,6 +289,16 @@ public:
         if ( stats.farthest_rocket_earth_distance < rocket_earth_distance ) {
             stats.farthest_rocket_earth_distance = rocket_earth_distance;
             stats.farthest_rocket_earth_index    = k;
+        }
+
+        const double v = rocket.coordinates.v.norm();
+        if ( stats.lowest_velocity > v ) {
+            stats.lowest_velocity       = v;
+            stats.lowest_velocity_index = k;
+        }
+        if ( stats.highest_velocity < v ) {
+            stats.highest_velocity       = v;
+            stats.highest_velocity_index = k;
         }
     }
 
