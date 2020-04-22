@@ -94,7 +94,7 @@ void draw( cv::Mat& buffer, const Coordinates& center, const double radius, cons
            const ViewPort& view_port ) {
     const int x = view_port.origin.x() + std::round( center.x.x() * view_port.zoom );
     const int y = view_port.origin.y() + std::round( center.x.y() * view_port.zoom );
-    const int r = std::max< int >( std::roundl( radius * view_port.zoom ), 1 );
+    const int r = std::max< int >( std::roundl( radius * view_port.zoom ), 3 );
     cv::circle( buffer, cv::Point( x, y ), r, color, cv::FILLED, 8, 0 );
 }
 
@@ -115,11 +115,22 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
     }
 }
 
-Eigen::Vector2d gravitational_force( const Body& a, const Body& b, const Body& c ) {
-    const auto r_b = b.coordinates.x - a.coordinates.x;
-    const auto r_c = c.coordinates.x - a.coordinates.x;
+template < std::size_t N >
+std::array< Eigen::Vector2d, N > gravitational_acceleration( const std::array< Body, N >& bodies ) {
+    std::array< Eigen::Vector2d, N > result;
 
-    return G * ( r_b.normalized() * b.mass / r_b.squaredNorm() + r_c.normalized() * c.mass / r_c.squaredNorm() );
+    for ( unsigned i = 0; i < bodies.size(); ++i ) {
+        result[ i ] = { 0., 0. };
+        for ( unsigned k = 0; k < bodies.size(); ++k ) {
+            if ( i == k ) {
+                continue;
+            }
+            const auto r = bodies[ k ].coordinates.x - bodies[ i ].coordinates.x;
+            result[ i ] += G * r.normalized() * bodies[ k ].mass / r.squaredNorm();
+        }
+    }
+
+    return result;
 }
 
 Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Stage >& stages, const Body& rocket,
@@ -138,6 +149,32 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Sta
     }
 
     return { 0., 0. };
+}
+
+
+template < std::size_t N >
+void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass, const std::vector< Stage >& stages,
+                const double t, const double dt ) {
+    std::array< Body, N > half_step = bodies;
+
+    auto g = gravitational_acceleration( bodies );
+
+    Eigen::Vector2d acc;
+    for ( unsigned k = 0; k < N; ++k ) {
+        acc = g[ k ] + ( ( k == 0 ) ? 12.803 * thrust( initial_rocket_mass, stages, bodies[ 0 ], bodies[ 2 ], t )
+                                    : Eigen::Vector2d{ 0., 0. } );
+        half_step[ k ].coordinates.v = bodies[ k ].coordinates.v + acc * 0.5 * dt;
+        half_step[ k ].coordinates.x = bodies[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
+    }
+
+    g = gravitational_acceleration( half_step );
+
+    for ( unsigned k = 0; k < N; ++k ) {
+        bodies[ k ].coordinates.x = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
+        acc = g[ k ] + ( ( k == 0 ) ? 12.803 * thrust( initial_rocket_mass, stages, bodies[ 0 ], bodies[ 2 ], t )
+                                    : Eigen::Vector2d{ 0., 0. } );
+        bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
+    }
 }
 
 
@@ -195,48 +232,12 @@ struct Scene {
         }
     }
 
-    bool leap_frog() {
-        auto aux_rocket = rocket;
-        auto aux_earth  = earth;
-        auto aux_moon   = moon;
-
-        {
-            const auto acc0 = gravitational_force( rocket, earth, moon ) +
-                              12.803 * thrust( initial_rocket_mass, stages, rocket, moon, t );
-
-            const auto v = aux_rocket.coordinates.v + acc0 * 0.5 * dt;
-            const auto x = aux_rocket.coordinates.x + v * 0.5 * dt;
-
-            aux_rocket.coordinates.x = x + v * 0.5 * dt;
-            const auto acc1          = gravitational_force( aux_rocket, earth, moon ) +
-                              12.803 * thrust( initial_rocket_mass, stages, aux_rocket, moon, t + 0.5 * dt );
-            aux_rocket.coordinates.v = v + acc1 * 0.5 * dt;
-        }
-
-
-        {
-            const auto acc0 = gravitational_force( moon, earth, rocket );
-            const auto v    = aux_moon.coordinates.v + acc0 * 0.5 * dt;
-            const auto x    = aux_moon.coordinates.x + v * 0.5 * dt;
-
-            aux_moon.coordinates.x = x + v * 0.5 * dt;
-            const auto acc1        = gravitational_force( aux_moon, earth, rocket );
-            aux_moon.coordinates.v = v + acc1 * 0.5 * dt;
-        }
-
-        {
-            const auto acc0 = gravitational_force( earth, moon, rocket );
-            const auto v    = aux_earth.coordinates.v + acc0 * 0.5 * dt;
-            const auto x    = aux_earth.coordinates.x + v * 0.5 * dt;
-
-            aux_earth.coordinates.x = x + v * 0.5 * dt;
-            const auto acc1         = gravitational_force( aux_earth, moon, rocket );
-            aux_earth.coordinates.v = v + acc1 * 0.5 * dt;
-        }
-
-        rocket = aux_rocket;
-        earth  = aux_earth;
-        moon   = aux_moon;
+    bool integrate() {
+        std::array< Body, 3 > bodies{ rocket, earth, moon };
+        leap_frog( bodies, initial_rocket_mass, stages, t, dt );
+        rocket = bodies[ 0 ];
+        earth  = bodies[ 1 ];
+        moon   = bodies[ 2 ];
         t += dt;
         ++k;
 
@@ -309,7 +310,7 @@ int main() {
     for ( scene.t = 0; scene.t < T; ) {
         scene.update_stats();
 
-        if ( !scene.leap_frog() ) {
+        if ( !scene.integrate() ) {
             break;
         };
     }
