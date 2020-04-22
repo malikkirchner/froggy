@@ -29,6 +29,7 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 
 
@@ -51,6 +52,7 @@ struct Coordinates {
     double          t = 0.;
     Eigen::Vector2d x = { 0., 0. };    // position, in meters from origin
     Eigen::Vector2d v = { 0., 0. };    // velocity, in meters per second
+    Eigen::Vector2d a = { 0., 0. };    // acceleration, in meters per second squared
 };
 
 struct Body {
@@ -196,6 +198,7 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
         acc = g[ k ] + ( ( k == 0 ) ? 12.803 * thrust( initial_rocket_mass, stages, bodies[ 0 ], bodies[ 2 ], t )
                                     : Eigen::Vector2d{ 0., 0. } );
         bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
+        bodies[ k ].coordinates.a = acc;
     }
 }
 
@@ -300,6 +303,16 @@ public:
             stats.highest_velocity       = v;
             stats.highest_velocity_index = k;
         }
+
+        const double a = rocket.coordinates.a.norm();
+        if ( stats.lowest_acceleration > a ) {
+            stats.lowest_acceleration       = a;
+            stats.lowest_acceleration_index = k;
+        }
+        if ( stats.highest_acceleration < a ) {
+            stats.highest_acceleration       = a;
+            stats.highest_acceleration_index = k;
+        }
     }
 
     bool integrate() {
@@ -318,6 +331,22 @@ public:
         }
 
         return ( rocket.coordinates.x - earth.coordinates.x ).norm() >= earth.radius;
+    }
+
+    std::string str() {
+        std::stringstream s;
+
+        s << fmt::format( "Flight time: {:1.2f}s ({:1.2f}d)\n", t, t / 24. / 3600. );
+        s << fmt::format( "Lowest velocity: {:1.2f}m/s ({:1.2f}km/h)\n", stats.lowest_velocity,
+                          stats.lowest_velocity * 3.6 );
+        s << fmt::format( "Hightest velocity: {:1.2f}m/s ({:1.2f}km/h)\n", stats.highest_velocity,
+                          stats.highest_velocity * 3.6 );
+        s << fmt::format( "Lowest acceleration: {:1.2f}m/s^2 ({:1.2f}g)\n", stats.lowest_acceleration,
+                          stats.lowest_acceleration / 9.81 );
+        s << fmt::format( "Hightest velocity: {:1.2f}m/s^2 ({:1.2f}g)\n", stats.highest_acceleration,
+                          stats.highest_acceleration / 9.81 );
+
+        return s.str();
     }
 
 public:
@@ -358,16 +387,21 @@ int main() {
         };
     }
 
-    const cv::Mat      buffer = scene.render();
+    const auto         filename = std::filesystem::current_path().append( "moon_shot.png" ).string();
+    const cv::Mat      buffer   = scene.render();
     std::vector< int > compression_params;
     compression_params.push_back( cv::IMWRITE_PNG_COMPRESSION );
     compression_params.push_back( 6 );
-    cv::imwrite( "moon_shot.png", buffer, compression_params );
+    cv::imwrite( filename, buffer, compression_params );
+
+    std::cout << scene.str() << std::endl;
+    std::cout << "Please find the diagram at " << filename << std::endl;
 
 #ifdef USE_GTK
     cv::imshow( "froggy", buffer );
     cv::waitKey( 0 );
 #endif
+
 
     return 0;
 }
