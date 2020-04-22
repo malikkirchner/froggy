@@ -181,24 +181,55 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
 }    // namespace
 
 
-struct Scene {
-    ViewPort view_port{};
+class Scene {
+public:
+    Scene() {
+        earth.mass    = 5.9722e24;
+        earth.radius  = 6'371'000.;
+        moon.mass     = 7.34767309e22;
+        moon.radius   = 1'737'100.;
+        rocket.mass   = 750'000;
+        rocket.radius = 27.;
 
-    double               initial_rocket_mass = 0.;
-    Body                 rocket;
-    Body                 earth;
-    Body                 moon;
-    std::vector< Stage > stages;
+        const double M      = earth.mass + moon.mass;
+        earth.coordinates.x = { -earth_moon_distance * moon.mass / M, 0. };
+        moon.coordinates.x  = { earth_moon_distance * earth.mass / M, 0. };
+        earth.coordinates.v = { 0., -2. * M_PI * std::abs( earth.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
+        moon.coordinates.v  = { 0., +2. * M_PI * std::abs( moon.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
 
-    double        t  = 0.;
-    double        dt = 0.01;
-    std::uint64_t k  = 0;
+        rocket.coordinates.x = { earth.coordinates.x.x() + earth.radius, earth.coordinates.x.y() };
+        rocket.coordinates.v = { earth.coordinates.v.x(),
+                                 earth.coordinates.v.y() + 2. * M_PI * cos( M_PI * ( 23.4 + 5.14 ) / 180. ) *
+                                                                   earth.radius / ( 24. * 3600. ) };
 
-    std::vector< Coordinates > rocket_trajectory;
-    std::vector< Coordinates > earth_trajectory;
-    std::vector< Coordinates > moon_trajectory;
+        Stage booster_stage;
+        booster_stage.thrust   = 4'000'000;
+        booster_stage.duration = 130.;
+        booster_stage.mass     = 270'000;
 
-    Stats stats;
+        Stage main_stage;
+        main_stage.thrust   = 1'180'000;
+        main_stage.duration = 605.;
+        main_stage.mass     = 170'500;
+
+        Stage upper_stage;
+        main_stage.thrust   = 27'000;
+        main_stage.duration = 1100.;
+        main_stage.mass     = 10'900;
+
+        stages.push_back( std::move( booster_stage ) );
+        stages.push_back( std::move( main_stage ) );
+        stages.push_back( std::move( upper_stage ) );
+
+        initial_rocket_mass = rocket.mass;
+
+        rocket_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
+        earth_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
+        moon_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
+        rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
+        earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
+        moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
+    }
 
     cv::Mat render() const {
         cv::Mat buffer( view_port.dimensions.y(), view_port.dimensions.x(), CV_8UC3 );
@@ -249,65 +280,38 @@ struct Scene {
 
         return ( rocket.coordinates.x - earth.coordinates.x ).norm() >= earth.radius;
     }
+
+public:
+    ViewPort view_port{};
+
+    double               initial_rocket_mass = 0.;
+    Body                 rocket;
+    Body                 earth;
+    Body                 moon;
+    std::vector< Stage > stages;
+
+    double        t  = 0.;
+    double        T  = 10 * 24 * 3600;
+    double        dt = 0.01;
+    std::uint64_t k  = 0;
+
+    std::vector< Coordinates > rocket_trajectory;
+    std::vector< Coordinates > earth_trajectory;
+    std::vector< Coordinates > moon_trajectory;
+
+    Stats stats;
 };
 
 
 int main() {
-    Scene scene;
-    scene.earth.mass    = 5.9722e24;
-    scene.earth.radius  = 6'371'000.;
-    scene.moon.mass     = 7.34767309e22;
-    scene.moon.radius   = 1'737'100.;
-    scene.rocket.mass   = 750'000;
-    scene.rocket.radius = 27.;
-
-    const double M            = scene.earth.mass + scene.moon.mass;
-    scene.earth.coordinates.x = { -earth_moon_distance * scene.moon.mass / M, 0. };
-    scene.moon.coordinates.x  = { earth_moon_distance * scene.earth.mass / M, 0. };
-    scene.earth.coordinates.v = { 0., -2. * M_PI * std::abs( scene.earth.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
-    scene.moon.coordinates.v  = { 0., +2. * M_PI * std::abs( scene.moon.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
-
-    scene.rocket.coordinates.x = { scene.earth.coordinates.x.x() + scene.earth.radius, scene.earth.coordinates.x.y() };
-    scene.rocket.coordinates.v = { scene.earth.coordinates.v.x(),
-                                   scene.earth.coordinates.v.y() + 2. * M_PI * cos( M_PI * ( 23.4 + 5.14 ) / 180. ) *
-                                                                           scene.earth.radius / ( 24. * 3600. ) };
-
-    scene.rocket_trajectory.emplace_back(
-            Coordinates{ scene.t, scene.rocket.coordinates.x, scene.rocket.coordinates.v } );
-    scene.earth_trajectory.emplace_back( Coordinates{ scene.t, scene.earth.coordinates.x, scene.earth.coordinates.v } );
-    scene.moon_trajectory.emplace_back( Coordinates{ scene.t, scene.moon.coordinates.x, scene.moon.coordinates.v } );
-
-    Stage booster_stage;
-    booster_stage.thrust   = 4'000'000;
-    booster_stage.duration = 130.;
-    booster_stage.mass     = 270'000;
-
-    Stage main_stage;
-    main_stage.thrust   = 1'180'000;
-    main_stage.duration = 605.;
-    main_stage.mass     = 170'500;
-
-    Stage upper_stage;
-    main_stage.thrust   = 27'000;
-    main_stage.duration = 1100.;
-    main_stage.mass     = 10'900;
-
-    scene.stages.push_back( std::move( booster_stage ) );
-    scene.stages.push_back( std::move( main_stage ) );
-    scene.stages.push_back( std::move( upper_stage ) );
-
-    scene.initial_rocket_mass = scene.rocket.mass;
-
 #ifdef USE_GTK
     cv::namedWindow( "froggy", cv::WINDOW_AUTOSIZE );
     cv::moveWindow( "froggy", 0, 0 );
 #endif
 
-    const double T = 10 * 24 * 3600;
-    scene.rocket_trajectory.reserve( T / scene.dt / scene.view_port.frame_stride + 100 );
-    scene.earth_trajectory.reserve( T / scene.dt / scene.view_port.frame_stride + 100 );
-    scene.moon_trajectory.reserve( T / scene.dt / scene.view_port.frame_stride + 100 );
-    for ( scene.t = 0; scene.t < T; ) {
+    Scene scene;
+
+    for ( scene.t = 0; scene.t < scene.T; ) {
         scene.update_stats();
 
         if ( !scene.integrate() ) {
@@ -315,8 +319,7 @@ int main() {
         };
     }
 
-    const cv::Mat buffer = scene.render();
-
+    const cv::Mat      buffer = scene.render();
     std::vector< int > compression_params;
     compression_params.push_back( cv::IMWRITE_PNG_COMPRESSION );
     compression_params.push_back( 6 );
