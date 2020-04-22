@@ -91,19 +91,20 @@ struct Stats {
 
 
 void draw( cv::Mat& buffer, const Coordinates& center, const double radius, const cv::Scalar& color,
-           const ViewPort& view_port ) {
+           const ViewPort& view_port, const int thickness = cv::FILLED, const cv::LineTypes line_type = cv::LINE_8 ) {
     const int x = view_port.origin.x() + std::round( center.x.x() * view_port.zoom );
     const int y = view_port.origin.y() + std::round( center.x.y() * view_port.zoom );
     const int r = std::max< int >( std::roundl( radius * view_port.zoom ), 3 );
-    cv::circle( buffer, cv::Point( x, y ), r, color, cv::FILLED, 8, 0 );
+    cv::circle( buffer, cv::Point( x, y ), r, color, thickness, line_type, 0 );
 }
 
-void draw( cv::Mat& buffer, const Body& body, const cv::Scalar& color, const ViewPort& view_port ) {
-    draw( buffer, body.coordinates, body.radius, color, view_port );
+void draw( cv::Mat& buffer, const Body& body, const cv::Scalar& color, const ViewPort& view_port,
+           const int thickness = cv::FILLED, const cv::LineTypes line_type = cv::LINE_8 ) {
+    draw( buffer, body.coordinates, body.radius, color, view_port, thickness, line_type );
 }
 
 void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const cv::Scalar& color,
-           const ViewPort& view_port ) {
+           const ViewPort& view_port, const cv::LineTypes line_type = cv::LINE_AA ) {
     const auto stride = view_port.frame_stride;
 
     for ( unsigned k = stride; k < trajectory.size(); k += stride ) {
@@ -111,7 +112,7 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
         const int y0 = view_port.origin.y() + std::round( trajectory[ k - stride ].x.y() * view_port.zoom );
         const int x1 = view_port.origin.x() + std::round( trajectory[ k ].x.x() * view_port.zoom );
         const int y1 = view_port.origin.y() + std::round( trajectory[ k ].x.y() * view_port.zoom );
-        cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color );
+        cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
     }
 }
 
@@ -236,9 +237,14 @@ public:
 
         draw( buffer, earth, color_earth, view_port );
         draw( buffer, moon, color_moon, view_port );
-        draw( buffer, moon_trajectory[ stats.closest_rocket_moon_index / view_port.frame_stride ], moon.radius,
-              color_moon, view_port );
         draw( buffer, rocket, color_rocket, view_port );
+
+        draw( buffer, earth_trajectory[ 0 ], earth.radius, color_earth_trajectory, view_port, 1, cv::LINE_AA );
+        draw( buffer, moon_trajectory[ 0 ], moon.radius, color_moon_trajectory, view_port, 1, cv::LINE_AA );
+        draw( buffer, rocket_trajectory[ 0 ], rocket.radius, color_rocket_trajectory, view_port, 1, cv::LINE_AA );
+
+        draw( buffer, moon_trajectory[ stats.closest_rocket_moon_index / view_port.frame_stride ], moon.radius,
+              color_moon, view_port, 1, cv::LINE_AA );
 
         draw( buffer, earth_trajectory, color_earth_trajectory, view_port );
         draw( buffer, moon_trajectory, color_moon_trajectory, view_port );
