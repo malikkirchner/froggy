@@ -36,8 +36,9 @@
 namespace {
 
 // Gravitational constant
-constexpr double G                   = 6.6743015e-11;    // m^3/(kg*s^2)
-constexpr double earth_moon_distance = 384'400'000.;     // meters
+constexpr double G                   = 6.6743015e-11;           // m^3/(kg*s^2)
+constexpr double earth_moon_distance = 384'400'000.;            // meters
+constexpr double moon_period         = 27.322 * 24. * 3600.;    // seconds
 
 const cv::Scalar color_rocket{ 0, 100, 255 };
 const cv::Scalar color_rocket_trajectory_lo{ 0, 50, 255 };
@@ -67,11 +68,43 @@ struct Stage {
     double mass     = 0.;    // kilogram
 };
 
-struct ViewPort {
-    Eigen::Vector2d origin       = { 500, 100 };
-    Eigen::Vector2d dimensions   = { 1800, 1250 };
-    double          zoom         = 1200 / earth_moon_distance;
+class ViewPort {
+public:
+    Eigen::Vector2i origin       = { 0, 0 };
+    Eigen::Vector2i dimensions   = { 0, 0 };
+    double          zoom         = 1.;
     std::uint16_t   frame_stride = 100;
+
+    void adapt_view_port() {
+        const auto s      = max_x - min_x;
+        const auto zoom_x = max_width / ( 1.1 * s.x() );
+        const auto zoom_y = max_height / ( 1.1 * s.y() );
+
+        if ( zoom_x < zoom_y ) {
+            zoom       = zoom_x;
+            dimensions = { max_width, 1.1 * s.y() * zoom };
+        } else {
+            zoom       = zoom_y;
+            dimensions = { 1.1 * s.x() * zoom, max_height };
+        }
+
+        origin = { -std::roundl( ( -0.05 * s.x() + min_x.x() ) * zoom ),
+                   -std::roundl( ( -0.05 * s.y() + min_x.y() ) * zoom ) };
+    }
+
+    void adapt_view_port( const Body& body ) {
+        min_x.x() = std::min( min_x.x(), body.coordinates.x.x() - body.radius );
+        max_x.x() = std::max( max_x.x(), body.coordinates.x.x() + body.radius );
+        min_x.y() = std::min( min_x.y(), body.coordinates.x.y() - body.radius );
+        max_x.y() = std::max( max_x.y(), body.coordinates.x.y() + body.radius );
+        adapt_view_port();
+    }
+
+private:
+    double          max_width  = 1920;
+    double          max_height = 1080;
+    Eigen::Vector2d min_x      = { std::numeric_limits< double >::max(), std::numeric_limits< double >::max() };
+    Eigen::Vector2d max_x      = { std::numeric_limits< double >::min(), std::numeric_limits< double >::min() };
 };
 
 
@@ -90,6 +123,12 @@ struct Stats {
     std::uint64_t highest_acceleration_index = 0;
     double        lowest_acceleration        = std::numeric_limits< double >::max();
     double        highest_acceleration       = 0.;
+
+    double rocket_orbit_length = 0.;
+    double earth_orbit_length  = 0.;
+    double moon_orbit_length   = 0.;
+
+    std::chrono::system_clock::time_point simulation_start = std::chrono::system_clock::now();
 };
 
 cv::Scalar lerp( const double s, const cv::Scalar& a, const cv::Scalar& b ) {
@@ -98,8 +137,8 @@ cv::Scalar lerp( const double s, const cv::Scalar& a, const cv::Scalar& b ) {
 
 void draw( cv::Mat& buffer, const Coordinates& center, const double radius, const cv::Scalar& color,
            const ViewPort& view_port, const int thickness = cv::FILLED, const cv::LineTypes line_type = cv::LINE_8 ) {
-    const int x = view_port.origin.x() + std::round( center.x.x() * view_port.zoom );
-    const int y = view_port.origin.y() + std::round( center.x.y() * view_port.zoom );
+    const int x = view_port.origin.x() + std::roundl( center.x.x() * view_port.zoom );
+    const int y = view_port.origin.y() + std::roundl( center.x.y() * view_port.zoom );
     const int r = std::max< int >( std::roundl( radius * view_port.zoom ), 3 );
     cv::circle( buffer, cv::Point( x, y ), r, color, thickness, line_type, 0 );
 }
@@ -114,10 +153,10 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
     const auto stride = view_port.frame_stride;
 
     for ( unsigned k = stride; k < trajectory.size(); k += stride ) {
-        const int x0 = view_port.origin.x() + std::round( trajectory[ k - stride ].x.x() * view_port.zoom );
-        const int y0 = view_port.origin.y() + std::round( trajectory[ k - stride ].x.y() * view_port.zoom );
-        const int x1 = view_port.origin.x() + std::round( trajectory[ k ].x.x() * view_port.zoom );
-        const int y1 = view_port.origin.y() + std::round( trajectory[ k ].x.y() * view_port.zoom );
+        const int x0 = view_port.origin.x() + std::roundl( trajectory[ k - stride ].x.x() * view_port.zoom );
+        const int y0 = view_port.origin.y() + std::roundl( trajectory[ k - stride ].x.y() * view_port.zoom );
+        const int x1 = view_port.origin.x() + std::roundl( trajectory[ k ].x.x() * view_port.zoom );
+        const int y1 = view_port.origin.y() + std::roundl( trajectory[ k ].x.y() * view_port.zoom );
         cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
     }
 }
@@ -166,7 +205,7 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Sta
         k += stage.duration;
         m -= stage.mass;
         if ( t < k ) {
-            const Eigen::Rotation2Dd rot{ M_PI / 180. * 20.3 };
+            const Eigen::Rotation2Dd rot{ M_PI / 180. * 20.8 };
             const auto               r = moon.coordinates.x - rocket.coordinates.x;
             return stage.thrust / a * ( rot * r.normalized() );
         }
@@ -218,8 +257,8 @@ public:
         const double M      = earth.mass + moon.mass;
         earth.coordinates.x = { -earth_moon_distance * moon.mass / M, 0. };
         moon.coordinates.x  = { earth_moon_distance * earth.mass / M, 0. };
-        earth.coordinates.v = { 0., -2. * M_PI * std::abs( earth.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
-        moon.coordinates.v  = { 0., +2. * M_PI * std::abs( moon.coordinates.x.x() ) / ( 29 * 24 * 3600. ) };
+        earth.coordinates.v = { 0., -2. * M_PI * std::abs( earth.coordinates.x.x() ) / moon_period };
+        moon.coordinates.v  = { 0., +2. * M_PI * std::abs( moon.coordinates.x.x() ) / moon_period };
 
         rocket.coordinates.x = { earth.coordinates.x.x() + earth.radius, earth.coordinates.x.y() };
         rocket.coordinates.v = { earth.coordinates.v.x(),
@@ -318,33 +357,55 @@ public:
     bool integrate() {
         std::array< Body, 3 > bodies{ rocket, earth, moon };
         leap_frog( bodies, initial_rocket_mass, stages, t, dt );
+
+        stats.rocket_orbit_length += ( bodies[ 0 ].coordinates.x - rocket.coordinates.x ).norm();
+        stats.earth_orbit_length += ( bodies[ 1 ].coordinates.x - earth.coordinates.x ).norm();
+        stats.moon_orbit_length += ( bodies[ 2 ].coordinates.x - moon.coordinates.x ).norm();
+
         rocket = bodies[ 0 ];
         earth  = bodies[ 1 ];
         moon   = bodies[ 2 ];
         t += dt;
         ++k;
 
-        if ( k % view_port.frame_stride == 0 ) {
+        const bool done = ( rocket.coordinates.x - earth.coordinates.x ).norm() < earth.radius;
+
+        if ( done || k % view_port.frame_stride == 0 ) {
             rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
             earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
             moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
+
+            view_port.adapt_view_port( rocket );
+            view_port.adapt_view_port( earth );
+            view_port.adapt_view_port( moon );
         }
 
-        return ( rocket.coordinates.x - earth.coordinates.x ).norm() >= earth.radius;
+        return !done;
     }
 
     std::string str() {
         std::stringstream s;
 
-        s << fmt::format( "Flight time: {:1.2f}s ({:1.2f}d)\n", t, t / 24. / 3600. );
-        s << fmt::format( "Lowest velocity: {:1.2f}m/s ({:1.2f}km/h)\n", stats.lowest_velocity,
+        s << fmt::format( "Iterations               : {}\n", k );
+        s << fmt::format( "Simulation duration      : {:1.3f}s\n",
+                          0.001 * std::chrono::duration_cast< std::chrono::milliseconds >(
+                                          std::chrono::system_clock::now() - stats.simulation_start )
+                                          .count() );
+
+        s << fmt::format( "Flight duration          : {:1.2f}s ({:1.2f}d)\n", t, t / 24. / 3600. );
+
+        s << fmt::format( "Lowest velocity          : {:1.2f}m/s ({:1.2f}km/h)\n", stats.lowest_velocity,
                           stats.lowest_velocity * 3.6 );
-        s << fmt::format( "Hightest velocity: {:1.2f}m/s ({:1.2f}km/h)\n", stats.highest_velocity,
+        s << fmt::format( "Hightest velocity        : {:1.2f}m/s ({:1.2f}km/h)\n", stats.highest_velocity,
                           stats.highest_velocity * 3.6 );
-        s << fmt::format( "Lowest acceleration: {:1.2f}m/s^2 ({:1.2f}g)\n", stats.lowest_acceleration,
+        s << fmt::format( "Lowest acceleration      : {:1.2f}m/s^2 ({:1.2f}g)\n", stats.lowest_acceleration,
                           stats.lowest_acceleration / 9.81 );
-        s << fmt::format( "Hightest velocity: {:1.2f}m/s^2 ({:1.2f}g)\n", stats.highest_acceleration,
+        s << fmt::format( "Hightest velocity        : {:1.2f}m/s^2 ({:1.2f}g)\n", stats.highest_acceleration,
                           stats.highest_acceleration / 9.81 );
+
+        s << fmt::format( "Rocket trajectory length : {:1.3f}km\n", 0.001 * stats.rocket_orbit_length );
+        s << fmt::format( "Earth trajectory length  : {:1.3f}km\n", 0.001 * stats.earth_orbit_length );
+        s << fmt::format( "Moon trajectory length   : {:1.3f}km\n", 0.001 * stats.moon_orbit_length );
 
         return s.str();
     }
@@ -359,7 +420,7 @@ public:
     std::vector< Stage > stages;
 
     double        t  = 0.;
-    double        T  = 10 * 24 * 3600;
+    double        T  = moon_period;
     double        dt = 0.01;
     std::uint64_t k  = 0;
 
@@ -377,6 +438,7 @@ int main() {
     cv::moveWindow( "froggy", 0, 0 );
 #endif
 
+    spdlog::info( "Starting simulation ..." );
     Scene scene;
 
     for ( scene.t = 0; scene.t < scene.T; ) {
@@ -387,21 +449,24 @@ int main() {
         };
     }
 
-    const auto         filename = std::filesystem::current_path().append( "moon_shot.png" ).string();
-    const cv::Mat      buffer   = scene.render();
+    spdlog::info( "width x height : {} x {}", scene.view_port.dimensions.x(), scene.view_port.dimensions.y() );
+    spdlog::info( "origin         : {}, {}", scene.view_port.origin.x(), scene.view_port.origin.y() );
+
+    const auto filename = std::filesystem::current_path().append( "moon_shot.png" ).string();
+    spdlog::info( "Rendering orbits ..." );
+    spdlog::info( "Please find the diagram at {}", filename );
+    const cv::Mat      buffer = scene.render();
     std::vector< int > compression_params;
     compression_params.push_back( cv::IMWRITE_PNG_COMPRESSION );
-    compression_params.push_back( 6 );
+    compression_params.push_back( 2 );
     cv::imwrite( filename, buffer, compression_params );
 
-    std::cout << scene.str() << std::endl;
-    std::cout << "Please find the diagram at " << filename << std::endl;
-
+    spdlog::info( "Flight stats:\n{}", scene.str() );
 #ifdef USE_GTK
+    spdlog::info( "Press any key to quit!" );
     cv::imshow( "froggy", buffer );
     cv::waitKey( 0 );
 #endif
-
 
     return 0;
 }
