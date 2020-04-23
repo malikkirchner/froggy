@@ -155,11 +155,9 @@ void draw( cv::Mat& buffer, const Body& body, const cv::Scalar& color, const Vie
 
 void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const cv::Scalar& color,
            const ViewPort& view_port, const cv::LineTypes line_type = cv::LINE_AA ) {
-    const auto stride = view_port.frame_stride;
-
-    for ( unsigned k = stride; k < trajectory.size(); k += stride ) {
-        const int x0 = view_port.origin.x() + std::roundl( trajectory[ k - stride ].x.x() * view_port.zoom );
-        const int y0 = view_port.origin.y() + std::roundl( trajectory[ k - stride ].x.y() * view_port.zoom );
+    for ( unsigned k = 1; k < trajectory.size(); ++k ) {
+        const int x0 = view_port.origin.x() + std::roundl( trajectory[ k - 1 ].x.x() * view_port.zoom );
+        const int y0 = view_port.origin.y() + std::roundl( trajectory[ k - 1 ].x.y() * view_port.zoom );
         const int x1 = view_port.origin.x() + std::roundl( trajectory[ k ].x.x() * view_port.zoom );
         const int y1 = view_port.origin.y() + std::roundl( trajectory[ k ].x.y() * view_port.zoom );
         cv::line( buffer, cv::Point2i( x0, y0 ), cv::Point2i( x1, y1 ), color, 1, line_type );
@@ -169,15 +167,13 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
 void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const double v_lo, const double v_hi,
            const cv::Scalar& color_lo, const cv::Scalar& color_hi, const ViewPort& view_port,
            const cv::LineTypes line_type = cv::LINE_AA ) {
-    const auto stride = view_port.frame_stride;
-
-    for ( unsigned k = stride; k < trajectory.size(); k += stride ) {
-        const int x0 = view_port.origin.x() + std::round( trajectory[ k - stride ].x.x() * view_port.zoom );
-        const int y0 = view_port.origin.y() + std::round( trajectory[ k - stride ].x.y() * view_port.zoom );
+    for ( unsigned k = 1; k < trajectory.size(); ++k ) {
+        const int x0 = view_port.origin.x() + std::round( trajectory[ k - 1 ].x.x() * view_port.zoom );
+        const int y0 = view_port.origin.y() + std::round( trajectory[ k - 1 ].x.y() * view_port.zoom );
         const int x1 = view_port.origin.x() + std::round( trajectory[ k ].x.x() * view_port.zoom );
         const int y1 = view_port.origin.y() + std::round( trajectory[ k ].x.y() * view_port.zoom );
 
-        const double v     = 0.5 * ( trajectory[ k ].v + trajectory[ k - stride ].v ).norm();
+        const double v     = 0.5 * ( trajectory[ k ].v + trajectory[ k - 1 ].v ).norm();
         const auto   color = lerp( ( v - v_lo ) / ( v_hi - v_lo ), color_lo, color_hi );
         cv::line( buffer, cv::Point2i( x0, y0 ), cv::Point2i( x1, y1 ), color, 1, line_type );
     }
