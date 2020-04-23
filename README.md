@@ -27,6 +27,7 @@ Take a look at `test/unit_test.cpp` for an example.
 A moon shot could look like this. The Earth is blue, the Rocket is orange and the Moon is gray. The lines show the body's trajectories.
 ![moon shot](/moon_shot.png)
 
+Some flight stats are printed to std::out.
 ```
 [2020-04-23 20:01:11.645] [info] Starting simulation ...
 [2020-04-23 20:01:19.463] [info] width x height : 1208px x 1080px
@@ -45,3 +46,9 @@ Rocket trajectory length : 794408.553km
 Earth trajectory length  : 8009.273km
 Moon trajectory length   : 650994.930km
 ```
+
+This picture shows take off and landing of the Rocket.
+![moon shot](/moon_shot_zoom_earth.png)
+
+This picture shows the Moon at its closest to the Rocket's trajectory.
+![moon shot](/moon_shot_zoom_moon.png)
