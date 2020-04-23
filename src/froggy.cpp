@@ -255,13 +255,36 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
 
 class Scene {
 public:
+    ViewPort view_port{};
+
+    double initial_rocket_mass  = 0.;    // kilogram
+    double rocket_launch_tilt   = 0.;    // radians
+    double thrust_shutdown_time = 0.;    // seconds
+
+    Body                 rocket;
+    Body                 earth;
+    Body                 moon;
+    std::vector< Stage > stages;
+
+    double        t  = 0.;
+    double        T  = moon_period;
+    double        dt = 0.01;
+    std::uint64_t k  = 0;
+
+    std::vector< Coordinates > rocket_trajectory;
+    std::vector< Coordinates > earth_trajectory;
+    std::vector< Coordinates > moon_trajectory;
+
+    Stats stats;
+
+public:
     Scene() {
         earth.mass    = 5.9722e24;
         earth.radius  = 6'371'000.;
         moon.mass     = 7.34767309e22;
         moon.radius   = 1'737'100.;
         rocket.mass   = 750'000;
-        rocket.radius = 27.;
+        rocket.radius = 55.;
 
         const double M      = earth.mass + moon.mass;
         earth.coordinates.x = { -earth_moon_distance * moon.mass / M, 0. };
@@ -275,7 +298,7 @@ public:
                                          circumference( cos( tilt_earth_axis + tilt_lunar_plane ) * earth.radius ) /
                                                  ( 24. * 3600. ) };
 
-        const double ariane_boost = 5.024;
+        const double ariane_boost = 5.00585;
 
         Stage booster_stage;
         booster_stage.thrust   = ariane_boost * 4'000'000;
@@ -300,7 +323,7 @@ public:
         stages.push_back( std::move( upper_stage ) );
 
         initial_rocket_mass = rocket.mass;
-        rocket_launch_tilt  = rad( 20.8 );
+        rocket_launch_tilt  = rad( 23.0 );
 
         rocket_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
         earth_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
@@ -433,29 +456,6 @@ public:
 
         return s.str();
     }
-
-public:
-    ViewPort view_port{};
-
-    double initial_rocket_mass  = 0.;    // kilogram
-    double rocket_launch_tilt   = 0.;    // radians
-    double thrust_shutdown_time = 0.;    // seconds
-
-    Body                 rocket;
-    Body                 earth;
-    Body                 moon;
-    std::vector< Stage > stages;
-
-    double        t  = 0.;
-    double        T  = moon_period;
-    double        dt = 0.01;
-    std::uint64_t k  = 0;
-
-    std::vector< Coordinates > rocket_trajectory;
-    std::vector< Coordinates > earth_trajectory;
-    std::vector< Coordinates > moon_trajectory;
-
-    Stats stats;
 };
 
 

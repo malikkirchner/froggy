@@ -28,20 +28,20 @@ A moon shot could look like this. The Earth is blue, the Rocket is orange and th
 ![moon shot](/moon_shot.png)
 
 ```
-[2020-04-23 19:31:39.085] [info] Starting simulation ...
-[2020-04-23 19:31:48.178] [info] width x height : 1506px x 1080px
-[2020-04-23 19:31:48.178] [info] origin         : 481px, 77px
-[2020-04-23 19:31:48.178] [info] Rendering orbits ...
-[2020-04-23 19:31:48.178] [info] Please find the diagram at /home/.../froggy/build/moon_shot.png
-[2020-04-23 19:31:48.217] [info] Flight stats:
-Iterations               : 75489569 (8267393.385/s)
-Simulation duration      : 9.131s
-Flight duration          : 754895.69s (8.74d)
-Lowest velocity          : 138.41m/s (498.28km/h)
-Hightest velocity        : 11085.95m/s (39909.43km/h)
+[2020-04-23 20:01:11.645] [info] Starting simulation ...
+[2020-04-23 20:01:19.463] [info] width x height : 1208px x 1080px
+[2020-04-23 20:01:19.463] [info] origin         : 197px, 77px
+[2020-04-23 20:01:19.463] [info] Rendering orbits ...
+[2020-04-23 20:01:19.463] [info] Please find the diagram at /home/.../froggy/build/moon_shot.png
+[2020-04-23 20:01:19.495] [info] Flight stats:
+Iterations               : 64334701 (8195503.312/s)
+Simulation duration      : 7.850s
+Flight duration          : 643347.01s (7.45d)
+Lowest velocity          : 336.46m/s (1211.26km/h)
+Hightest velocity        : 11111.18m/s (40000.25km/h)
 Lowest acceleration      : 0.00m/s^2 (0.00g)
-Hightest acceleration    : 33.21m/s^2 (3.39g)
-Rocket trajectory length : 795888.745km
-Earth trajectory length  : 9401.295km
-Moon trajectory length   : 764138.733km
+Hightest acceleration    : 33.20m/s^2 (3.38g)
+Rocket trajectory length : 794408.553km
+Earth trajectory length  : 8009.273km
+Moon trajectory length   : 650994.930km
 ```
