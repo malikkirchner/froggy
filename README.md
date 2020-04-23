@@ -11,7 +11,7 @@ From the repository root run following commands to build and test.
 mkdir build
 cd build
 # configure build system
-cmake .. -DCMAKE_BUILD_TYPE=Debug|Release|...
+cmake .. -DCMAKE_BUILD_TYPE=Debug|Release|... [ -DUSE_GTK=ON ]
 # build
 cmake --build .
 # test

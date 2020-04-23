@@ -35,10 +35,15 @@
 
 namespace {
 
+constexpr double rad( const double deg ) noexcept { return deg * M_PI / 180.; }
+constexpr double circumference( const double r ) noexcept { return 2.0 * M_PI * std::abs( r ); }
+
 // Gravitational constant
 constexpr double G                   = 6.6743015e-11;           // m^3/(kg*s^2)
 constexpr double earth_moon_distance = 384'400'000.;            // meters
 constexpr double moon_period         = 27.322 * 24. * 3600.;    // seconds
+constexpr double tilt_earth_axis     = rad( 23.4 );             // radian
+constexpr double tilt_lunar_plane    = rad( 5.14 );             // radian
 
 const cv::Scalar color_rocket{ 0, 100, 255 };
 const cv::Scalar color_rocket_trajectory_lo{ 0, 50, 255 };
@@ -75,7 +80,7 @@ public:
     double          zoom         = 1.;
     std::uint16_t   frame_stride = 100;
 
-    void adapt_view_port() {
+    void adapt() {
         const auto s      = max_x - min_x;
         const auto zoom_x = max_width / ( 1.1 * s.x() );
         const auto zoom_y = max_height / ( 1.1 * s.y() );
@@ -92,12 +97,12 @@ public:
                    -std::roundl( ( -0.05 * s.y() + min_x.y() ) * zoom ) };
     }
 
-    void adapt_view_port( const Body& body ) {
+    void adapt( const Body& body ) {
         min_x.x() = std::min( min_x.x(), body.coordinates.x.x() - body.radius );
         max_x.x() = std::max( max_x.x(), body.coordinates.x.x() + body.radius );
         min_x.y() = std::min( min_x.y(), body.coordinates.x.y() - body.radius );
         max_x.y() = std::max( max_x.y(), body.coordinates.x.y() + body.radius );
-        adapt_view_port();
+        adapt();
     }
 
 private:
@@ -196,8 +201,8 @@ std::array< Eigen::Vector2d, N > gravitational_acceleration( const std::array< B
     return result;
 }
 
-Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Stage >& stages, const Body& rocket,
-                        const Body& moon, const double t ) {
+Eigen::Vector2d thrust( const double initial_rocket_mass, const double rocket_launch_tilt,
+                        const std::vector< Stage >& stages, const Body& rocket, const Body& moon, const double t ) {
     double k = 0.;
     double m = initial_rocket_mass;
     for ( const auto& stage : stages ) {
@@ -205,7 +210,7 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Sta
         k += stage.duration;
         m -= stage.mass;
         if ( t < k ) {
-            const Eigen::Rotation2Dd rot{ M_PI / 180. * 20.8 };
+            const Eigen::Rotation2Dd rot{ rocket_launch_tilt };
             const auto               r = moon.coordinates.x - rocket.coordinates.x;
             return stage.thrust / a * ( rot * r.normalized() );
         }
@@ -216,16 +221,17 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const std::vector< Sta
 
 
 template < std::size_t N >
-void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass, const std::vector< Stage >& stages,
-                const double t, const double dt ) {
+void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass, const double rocket_launch_tilt,
+                const std::vector< Stage >& stages, const double t, const double dt ) {
     std::array< Body, N > half_step = bodies;
 
     auto g = gravitational_acceleration( bodies );
 
     Eigen::Vector2d acc;
     for ( unsigned k = 0; k < N; ++k ) {
-        acc = g[ k ] + ( ( k == 0 ) ? 12.803 * thrust( initial_rocket_mass, stages, bodies[ 0 ], bodies[ 2 ], t )
-                                    : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ] +
+              ( ( k == 0 ) ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t )
+                           : Eigen::Vector2d{ 0., 0. } );
         half_step[ k ].coordinates.v = bodies[ k ].coordinates.v + acc * 0.5 * dt;
         half_step[ k ].coordinates.x = bodies[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
     }
@@ -234,8 +240,9 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
 
     for ( unsigned k = 0; k < N; ++k ) {
         bodies[ k ].coordinates.x = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
-        acc = g[ k ] + ( ( k == 0 ) ? 12.803 * thrust( initial_rocket_mass, stages, bodies[ 0 ], bodies[ 2 ], t )
-                                    : Eigen::Vector2d{ 0., 0. } );
+        acc                       = g[ k ] +
+              ( ( k == 0 ) ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t )
+                           : Eigen::Vector2d{ 0., 0. } );
         bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
         bodies[ k ].coordinates.a = acc;
     }
@@ -257,26 +264,27 @@ public:
         const double M      = earth.mass + moon.mass;
         earth.coordinates.x = { -earth_moon_distance * moon.mass / M, 0. };
         moon.coordinates.x  = { earth_moon_distance * earth.mass / M, 0. };
-        earth.coordinates.v = { 0., -2. * M_PI * std::abs( earth.coordinates.x.x() ) / moon_period };
-        moon.coordinates.v  = { 0., +2. * M_PI * std::abs( moon.coordinates.x.x() ) / moon_period };
+        earth.coordinates.v = { 0., -circumference( earth.coordinates.x.x() ) / moon_period };
+        moon.coordinates.v  = { 0., +circumference( moon.coordinates.x.x() ) / moon_period };
 
         rocket.coordinates.x = { earth.coordinates.x.x() + earth.radius, earth.coordinates.x.y() };
         rocket.coordinates.v = { earth.coordinates.v.x(),
-                                 earth.coordinates.v.y() + 2. * M_PI * cos( M_PI * ( 23.4 + 5.14 ) / 180. ) *
-                                                                   earth.radius / ( 24. * 3600. ) };
+                                 earth.coordinates.v.y() +
+                                         circumference( cos( tilt_earth_axis + tilt_lunar_plane ) * earth.radius ) /
+                                                 ( 24. * 3600. ) };
 
         Stage booster_stage;
-        booster_stage.thrust   = 4'000'000;
+        booster_stage.thrust   = 12.803 * 4'000'000;
         booster_stage.duration = 130.;
         booster_stage.mass     = 270'000;
 
         Stage main_stage;
-        main_stage.thrust   = 1'180'000;
+        main_stage.thrust   = 12.803 * 1'180'000;
         main_stage.duration = 605.;
         main_stage.mass     = 170'500;
 
         Stage upper_stage;
-        main_stage.thrust   = 27'000;
+        main_stage.thrust   = 12.803 * 27'000;
         main_stage.duration = 1100.;
         main_stage.mass     = 10'900;
 
@@ -285,6 +293,7 @@ public:
         stages.push_back( std::move( upper_stage ) );
 
         initial_rocket_mass = rocket.mass;
+        rocket_launch_tilt  = rad( 20.8 );
 
         rocket_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
         earth_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
@@ -354,32 +363,39 @@ public:
         }
     }
 
-    bool integrate() {
-        std::array< Body, 3 > bodies{ rocket, earth, moon };
-        leap_frog( bodies, initial_rocket_mass, stages, t, dt );
-
+    void update_trajectory_lengths( const std::array< Body, 3 >& bodies ) {
         stats.rocket_orbit_length += ( bodies[ 0 ].coordinates.x - rocket.coordinates.x ).norm();
         stats.earth_orbit_length += ( bodies[ 1 ].coordinates.x - earth.coordinates.x ).norm();
         stats.moon_orbit_length += ( bodies[ 2 ].coordinates.x - moon.coordinates.x ).norm();
+    }
 
+    void record_trajectories() {
+        rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
+        earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
+        moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
+    }
+
+    void adapt_view_port() {
+        view_port.adapt( rocket );
+        view_port.adapt( earth );
+        view_port.adapt( moon );
+    }
+
+    bool integrate() {
+        std::array< Body, 3 > bodies{ rocket, earth, moon };
+        leap_frog( bodies, initial_rocket_mass, rocket_launch_tilt, stages, t, dt );
+        update_trajectory_lengths( bodies );
         rocket = bodies[ 0 ];
         earth  = bodies[ 1 ];
         moon   = bodies[ 2 ];
         t += dt;
         ++k;
 
-        const bool done = ( rocket.coordinates.x - earth.coordinates.x ).norm() < earth.radius;
-
+        const bool done = ( t >= T ) || ( rocket.coordinates.x - earth.coordinates.x ).norm() < earth.radius;
         if ( done || k % view_port.frame_stride == 0 ) {
-            rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
-            earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
-            moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
-
-            view_port.adapt_view_port( rocket );
-            view_port.adapt_view_port( earth );
-            view_port.adapt_view_port( moon );
+            record_trajectories();
+            adapt_view_port();
         }
-
         return !done;
     }
 
@@ -413,7 +429,9 @@ public:
 public:
     ViewPort view_port{};
 
-    double               initial_rocket_mass = 0.;
+    double initial_rocket_mass = 0.;    // kilogram
+    double rocket_launch_tilt  = 0.;    // radians
+
     Body                 rocket;
     Body                 earth;
     Body                 moon;
@@ -441,16 +459,12 @@ int main() {
     spdlog::info( "Starting simulation ..." );
     Scene scene;
 
-    for ( scene.t = 0; scene.t < scene.T; ) {
+    while ( scene.integrate() ) {
         scene.update_stats();
-
-        if ( !scene.integrate() ) {
-            break;
-        };
     }
 
-    spdlog::info( "width x height : {} x {}", scene.view_port.dimensions.x(), scene.view_port.dimensions.y() );
-    spdlog::info( "origin         : {}, {}", scene.view_port.origin.x(), scene.view_port.origin.y() );
+    spdlog::info( "width x height : {}px x {}px", scene.view_port.dimensions.x(), scene.view_port.dimensions.y() );
+    spdlog::info( "origin         : {}px, {}px", scene.view_port.origin.x(), scene.view_port.origin.y() );
 
     const auto filename = std::filesystem::current_path().append( "moon_shot.png" ).string();
     spdlog::info( "Rendering orbits ..." );
