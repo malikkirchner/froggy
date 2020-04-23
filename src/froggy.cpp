@@ -145,7 +145,7 @@ void draw( cv::Mat& buffer, const Coordinates& center, const double radius, cons
     const int x = view_port.origin.x() + std::roundl( center.x.x() * view_port.zoom );
     const int y = view_port.origin.y() + std::roundl( center.x.y() * view_port.zoom );
     const int r = std::max< int >( std::roundl( radius * view_port.zoom ), 3 );
-    cv::circle( buffer, cv::Point( x, y ), r, color, thickness, line_type, 0 );
+    cv::circle( buffer, cv::Point2i( x, y ), r, color, thickness, line_type, 0 );
 }
 
 void draw( cv::Mat& buffer, const Body& body, const cv::Scalar& color, const ViewPort& view_port,
@@ -162,7 +162,7 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
         const int y0 = view_port.origin.y() + std::roundl( trajectory[ k - stride ].x.y() * view_port.zoom );
         const int x1 = view_port.origin.x() + std::roundl( trajectory[ k ].x.x() * view_port.zoom );
         const int y1 = view_port.origin.y() + std::roundl( trajectory[ k ].x.y() * view_port.zoom );
-        cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
+        cv::line( buffer, cv::Point2i( x0, y0 ), cv::Point2i( x1, y1 ), color, 1, line_type );
     }
 }
 
@@ -179,7 +179,7 @@ void draw( cv::Mat& buffer, const std::vector< Coordinates >& trajectory, const 
 
         const double v     = 0.5 * ( trajectory[ k ].v + trajectory[ k - stride ].v ).norm();
         const auto   color = lerp( ( v - v_lo ) / ( v_hi - v_lo ), color_lo, color_hi );
-        cv::line( buffer, cv::Point2d( x0, y0 ), cv::Point2d( x1, y1 ), color, 1, line_type );
+        cv::line( buffer, cv::Point2i( x0, y0 ), cv::Point2i( x1, y1 ), color, 1, line_type );
     }
 }
 
@@ -187,14 +187,15 @@ template < std::size_t N >
 std::array< Eigen::Vector2d, N > gravitational_acceleration( const std::array< Body, N >& bodies ) {
     std::array< Eigen::Vector2d, N > result;
 
-    for ( unsigned i = 0; i < bodies.size(); ++i ) {
+    for ( unsigned i = 0; i < N; ++i ) {
         result[ i ] = { 0., 0. };
-        for ( unsigned k = 0; k < bodies.size(); ++k ) {
-            if ( i == k ) {
-                continue;
-            }
-            const auto r = bodies[ k ].coordinates.x - bodies[ i ].coordinates.x;
-            result[ i ] += G * r.normalized() * bodies[ k ].mass / r.squaredNorm();
+        for ( unsigned k = 0; k < i; ++k ) {
+            const auto x = bodies[ k ].coordinates.x - bodies[ i ].coordinates.x;
+            const auto l = x.norm();
+            const auto n = G * x / ( l * l * l );
+
+            result[ i ] += n * bodies[ k ].mass;
+            result[ k ] -= n * bodies[ i ].mass;
         }
     }
 
@@ -206,10 +207,10 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const double rocket_la
     double k = 0.;
     double m = initial_rocket_mass;
     for ( const auto& stage : stages ) {
-        const auto a = m - stage.mass / stage.duration * ( t - k );
         k += stage.duration;
         m -= stage.mass;
         if ( t < k ) {
+            const auto               a = m - stage.mass / stage.duration * ( t - k );
             const Eigen::Rotation2Dd rot{ rocket_launch_tilt };
             const auto               r = moon.coordinates.x - rocket.coordinates.x;
             return stage.thrust / a * ( rot * r.normalized() );
@@ -222,16 +223,17 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const double rocket_la
 
 template < std::size_t N >
 void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass, const double rocket_launch_tilt,
-                const std::vector< Stage >& stages, const double t, const double dt ) {
+                const double thrust_shutdown_time, const std::vector< Stage >& stages, const double t,
+                const double dt ) {
     std::array< Body, N > half_step = bodies;
 
     auto g = gravitational_acceleration( bodies );
 
     Eigen::Vector2d acc;
     for ( unsigned k = 0; k < N; ++k ) {
-        acc = g[ k ] +
-              ( ( k == 0 ) ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t )
-                           : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ] + ( ( k == 0 && t < thrust_shutdown_time ) ? thrust( initial_rocket_mass, rocket_launch_tilt,
+                                                                          stages, bodies[ 0 ], bodies[ 2 ], t )
+                                                                : Eigen::Vector2d{ 0., 0. } );
         half_step[ k ].coordinates.v = bodies[ k ].coordinates.v + acc * 0.5 * dt;
         half_step[ k ].coordinates.x = bodies[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
     }
@@ -240,9 +242,9 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
 
     for ( unsigned k = 0; k < N; ++k ) {
         bodies[ k ].coordinates.x = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
-        acc                       = g[ k ] +
-              ( ( k == 0 ) ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t )
-                           : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ] + ( ( k == 0 && t < thrust_shutdown_time ) ? thrust( initial_rocket_mass, rocket_launch_tilt,
+                                                                          stages, bodies[ 0 ], bodies[ 2 ], t )
+                                                                : Eigen::Vector2d{ 0., 0. } );
         bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
         bodies[ k ].coordinates.a = acc;
     }
@@ -273,20 +275,25 @@ public:
                                          circumference( cos( tilt_earth_axis + tilt_lunar_plane ) * earth.radius ) /
                                                  ( 24. * 3600. ) };
 
+        const double ariane_boost = 5.024;
+
         Stage booster_stage;
-        booster_stage.thrust   = 12.803 * 4'000'000;
+        booster_stage.thrust   = ariane_boost * 4'000'000;
         booster_stage.duration = 130.;
         booster_stage.mass     = 270'000;
+        thrust_shutdown_time += booster_stage.duration;
 
         Stage main_stage;
-        main_stage.thrust   = 12.803 * 1'180'000;
+        main_stage.thrust   = ariane_boost * 1'180'000;
         main_stage.duration = 605.;
         main_stage.mass     = 170'500;
+        thrust_shutdown_time += main_stage.duration;
 
         Stage upper_stage;
-        main_stage.thrust   = 12.803 * 27'000;
-        main_stage.duration = 1100.;
-        main_stage.mass     = 10'900;
+        upper_stage.thrust   = ariane_boost * 27'000;
+        upper_stage.duration = 1100.;
+        upper_stage.mass     = 10'900;
+        thrust_shutdown_time += upper_stage.duration;
 
         stages.push_back( std::move( booster_stage ) );
         stages.push_back( std::move( main_stage ) );
@@ -383,7 +390,7 @@ public:
 
     bool integrate() {
         std::array< Body, 3 > bodies{ rocket, earth, moon };
-        leap_frog( bodies, initial_rocket_mass, rocket_launch_tilt, stages, t, dt );
+        leap_frog( bodies, initial_rocket_mass, rocket_launch_tilt, thrust_shutdown_time, stages, t, dt );
         update_trajectory_lengths( bodies );
         rocket = bodies[ 0 ];
         earth  = bodies[ 1 ];
@@ -402,11 +409,12 @@ public:
     std::string str() {
         std::stringstream s;
 
-        s << fmt::format( "Iterations               : {}\n", k );
-        s << fmt::format( "Simulation duration      : {:1.3f}s\n",
-                          0.001 * std::chrono::duration_cast< std::chrono::milliseconds >(
+        double duration = 0.001 * std::chrono::duration_cast< std::chrono::milliseconds >(
                                           std::chrono::system_clock::now() - stats.simulation_start )
-                                          .count() );
+                                          .count();
+
+        s << fmt::format( "Iterations               : {} ({:1.3f}/s)\n", k, k / duration );
+        s << fmt::format( "Simulation duration      : {:1.3f}s\n", duration );
 
         s << fmt::format( "Flight duration          : {:1.2f}s ({:1.2f}d)\n", t, t / 24. / 3600. );
 
@@ -416,7 +424,7 @@ public:
                           stats.highest_velocity * 3.6 );
         s << fmt::format( "Lowest acceleration      : {:1.2f}m/s^2 ({:1.2f}g)\n", stats.lowest_acceleration,
                           stats.lowest_acceleration / 9.81 );
-        s << fmt::format( "Hightest velocity        : {:1.2f}m/s^2 ({:1.2f}g)\n", stats.highest_acceleration,
+        s << fmt::format( "Hightest acceleration    : {:1.2f}m/s^2 ({:1.2f}g)\n", stats.highest_acceleration,
                           stats.highest_acceleration / 9.81 );
 
         s << fmt::format( "Rocket trajectory length : {:1.3f}km\n", 0.001 * stats.rocket_orbit_length );
@@ -429,8 +437,9 @@ public:
 public:
     ViewPort view_port{};
 
-    double initial_rocket_mass = 0.;    // kilogram
-    double rocket_launch_tilt  = 0.;    // radians
+    double initial_rocket_mass  = 0.;    // kilogram
+    double rocket_launch_tilt   = 0.;    // radians
+    double thrust_shutdown_time = 0.;    // seconds
 
     Body                 rocket;
     Body                 earth;
