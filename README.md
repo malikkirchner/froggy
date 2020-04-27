@@ -30,8 +30,6 @@ A moon shot could look like this. The Earth is blue, the Rocket is orange and th
 Some flight stats are printed to std::out.
 ```
 [2020-04-23 20:01:11.645] [info] Starting simulation ...
-[2020-04-23 20:01:19.463] [info] width x height : 1208px x 1080px
-[2020-04-23 20:01:19.463] [info] origin         : 197px, 77px
 [2020-04-23 20:01:19.463] [info] Rendering orbits ...
 [2020-04-23 20:01:19.463] [info] Please find the diagram at /home/.../froggy/build/moon_shot.png
 [2020-04-23 20:01:19.495] [info] Flight stats:

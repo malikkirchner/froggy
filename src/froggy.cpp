@@ -250,7 +250,7 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
 
 
 class Scene {
-public:
+private:
     ViewPort view_port{};
 
     double initial_rocket_mass  = 0.;    // kilogram
@@ -389,24 +389,6 @@ public:
         }
     }
 
-    void update_trajectory_lengths( const std::array< Body, 3 >& bodies ) {
-        stats.rocket_orbit_length += ( bodies[ 0 ].coordinates.x - rocket.coordinates.x ).norm();
-        stats.earth_orbit_length += ( bodies[ 1 ].coordinates.x - earth.coordinates.x ).norm();
-        stats.moon_orbit_length += ( bodies[ 2 ].coordinates.x - moon.coordinates.x ).norm();
-    }
-
-    void record_trajectories() {
-        rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
-        earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
-        moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
-    }
-
-    void adapt_view_port() {
-        view_port.adapt( rocket );
-        view_port.adapt( earth );
-        view_port.adapt( moon );
-    }
-
     bool integrate() {
         std::array< Body, 3 > bodies{ rocket, earth, moon };
         leap_frog( bodies, initial_rocket_mass, rocket_launch_tilt, thrust_shutdown_time, stages, t, dt );
@@ -452,6 +434,25 @@ public:
 
         return s.str();
     }
+
+private:
+    void update_trajectory_lengths( const std::array< Body, 3 >& bodies ) {
+        stats.rocket_orbit_length += ( bodies[ 0 ].coordinates.x - rocket.coordinates.x ).norm();
+        stats.earth_orbit_length += ( bodies[ 1 ].coordinates.x - earth.coordinates.x ).norm();
+        stats.moon_orbit_length += ( bodies[ 2 ].coordinates.x - moon.coordinates.x ).norm();
+    }
+
+    void record_trajectories() {
+        rocket_trajectory.emplace_back( Coordinates{ t, rocket.coordinates.x, rocket.coordinates.v } );
+        earth_trajectory.emplace_back( Coordinates{ t, earth.coordinates.x, earth.coordinates.v } );
+        moon_trajectory.emplace_back( Coordinates{ t, moon.coordinates.x, moon.coordinates.v } );
+    }
+
+    void adapt_view_port() {
+        view_port.adapt( rocket );
+        view_port.adapt( earth );
+        view_port.adapt( moon );
+    }
 };
 
 
@@ -467,9 +468,6 @@ int main() {
     while ( scene.integrate() ) {
         scene.update_stats();
     }
-
-    spdlog::info( "width x height : {}px x {}px", scene.view_port.dimensions.x(), scene.view_port.dimensions.y() );
-    spdlog::info( "origin         : {}px, {}px", scene.view_port.origin.x(), scene.view_port.origin.y() );
 
     const auto filename = std::filesystem::current_path().append( "moon_shot.png" ).string();
     spdlog::info( "Rendering orbits ..." );
