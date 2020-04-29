@@ -198,10 +198,10 @@ std::array< Eigen::Vector2d, N > gravitational_acceleration( const std::array< B
     return result;
 }
 
-Eigen::Vector2d thrust( const double initial_rocket_mass, const double rocket_launch_tilt,
-                        const std::vector< Stage >& stages, const Body& rocket, const Body& moon, const double t ) {
+Eigen::Vector2d thrust( const double rocket_launch_tilt, const std::vector< Stage >& stages, const Body& rocket,
+                        const Body& moon, const double t ) {
     double k = 0.;
-    double m = initial_rocket_mass;
+    double m = rocket.mass;
     for ( const auto& stage : stages ) {
         k += stage.duration;
         m -= stage.mass;
@@ -218,30 +218,28 @@ Eigen::Vector2d thrust( const double initial_rocket_mass, const double rocket_la
 
 
 template < std::size_t N >
-void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass, const double rocket_launch_tilt,
-                const double thrust_shutdown_time, const std::vector< Stage >& stages, const double t,
-                const double dt ) {
+void leap_frog( std::array< Body, N >& bodies, const double rocket_launch_tilt, const double thrust_shutdown_time,
+                const std::vector< Stage >& stages, const double t, const double dt ) {
     std::array< Body, N > half_step = bodies;
 
-    auto g = gravitational_acceleration( bodies );
-
     Eigen::Vector2d acc;
+    auto            g = gravitational_acceleration( bodies );
     for ( unsigned k = 0; k < N; ++k ) {
-        acc = g[ k ] + ( ( k == 0 && t < thrust_shutdown_time ) ? thrust( initial_rocket_mass, rocket_launch_tilt,
-                                                                          stages, bodies[ 0 ], bodies[ 2 ], t )
-                                                                : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ];
+        if ( k == 0 && t < thrust_shutdown_time ) {
+            acc += thrust( rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t );
+        }
         half_step[ k ].coordinates.v = bodies[ k ].coordinates.v + acc * 0.5 * dt;
         half_step[ k ].coordinates.x = bodies[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
         bodies[ k ].coordinates.x    = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
     }
 
     g = gravitational_acceleration( bodies );
-
     for ( unsigned k = 0; k < N; ++k ) {
-        acc = g[ k ] +
-              ( ( k == 0 && t + dt < thrust_shutdown_time )
-                        ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t + dt )
-                        : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ];
+        if ( k == 0 && t + dt < thrust_shutdown_time ) {
+            acc += thrust( rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t + dt );
+        }
         bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
         bodies[ k ].coordinates.a = acc;
     }
@@ -254,7 +252,6 @@ class Scene {
 private:
     ViewPort view_port{};
 
-    double initial_rocket_mass  = 0.;    // kilogram
     double rocket_launch_tilt   = 0.;    // radians
     double thrust_shutdown_time = 0.;    // seconds
 
@@ -319,8 +316,7 @@ public:
         stages.push_back( std::move( main_stage ) );
         stages.push_back( std::move( upper_stage ) );
 
-        initial_rocket_mass = rocket.mass;
-        rocket_launch_tilt  = rad( 23.0 );
+        rocket_launch_tilt = rad( 23.0 );
 
         rocket_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
         earth_trajectory.reserve( T / dt / view_port.frame_stride + 100 );
@@ -392,7 +388,7 @@ public:
 
     bool integrate() {
         std::array< Body, 3 > bodies{ rocket, earth, moon };
-        leap_frog( bodies, initial_rocket_mass, rocket_launch_tilt, thrust_shutdown_time, stages, t, dt );
+        leap_frog( bodies, rocket_launch_tilt, thrust_shutdown_time, stages, t, dt );
         update_trajectory_lengths( bodies );
         rocket = bodies[ 0 ];
         earth  = bodies[ 1 ];
