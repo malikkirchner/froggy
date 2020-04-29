@@ -232,15 +232,16 @@ void leap_frog( std::array< Body, N >& bodies, const double initial_rocket_mass,
                                                                 : Eigen::Vector2d{ 0., 0. } );
         half_step[ k ].coordinates.v = bodies[ k ].coordinates.v + acc * 0.5 * dt;
         half_step[ k ].coordinates.x = bodies[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
+        bodies[ k ].coordinates.x    = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
     }
 
-    g = gravitational_acceleration( half_step );
+    g = gravitational_acceleration( bodies );
 
     for ( unsigned k = 0; k < N; ++k ) {
-        bodies[ k ].coordinates.x = half_step[ k ].coordinates.x + half_step[ k ].coordinates.v * 0.5 * dt;
-        acc = g[ k ] + ( ( k == 0 && t < thrust_shutdown_time ) ? thrust( initial_rocket_mass, rocket_launch_tilt,
-                                                                          stages, bodies[ 0 ], bodies[ 2 ], t )
-                                                                : Eigen::Vector2d{ 0., 0. } );
+        acc = g[ k ] +
+              ( ( k == 0 && t + dt < thrust_shutdown_time )
+                        ? thrust( initial_rocket_mass, rocket_launch_tilt, stages, bodies[ 0 ], bodies[ 2 ], t + dt )
+                        : Eigen::Vector2d{ 0., 0. } );
         bodies[ k ].coordinates.v = half_step[ k ].coordinates.v + acc * 0.5 * dt;
         bodies[ k ].coordinates.a = acc;
     }

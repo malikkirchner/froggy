@@ -29,20 +29,20 @@ A moon shot could look like this. The Earth is blue, the Rocket is orange and th
 
 Some flight stats are printed to std::out.
 ```
-[2020-04-23 20:01:11.645] [info] Starting simulation ...
-[2020-04-23 20:01:19.463] [info] Rendering orbits ...
-[2020-04-23 20:01:19.463] [info] Please find the diagram at /home/.../froggy/build/moon_shot.png
-[2020-04-23 20:01:19.495] [info] Flight stats:
-Iterations               : 64334701 (8195503.312/s)
-Simulation duration      : 7.850s
-Flight duration          : 643347.01s (7.45d)
-Lowest velocity          : 336.46m/s (1211.26km/h)
-Hightest velocity        : 11111.18m/s (40000.25km/h)
+[2020-04-29 15:53:22.243] [info] Starting simulation ...
+[2020-04-29 15:53:29.437] [info] Rendering orbits ...
+[2020-04-29 15:53:29.437] [info] Please find the diagram at /home/.../froggy/build/moon_shot.png
+[2020-04-29 15:53:29.706] [info] Flight stats:
+Iterations               : 64026513 (8580342.133/s)
+Simulation duration      : 7.462s
+Flight duration          : 640265.13s (7.41d)
+Lowest velocity          : 336.75m/s (1212.29km/h)
+Hightest velocity        : 11114.93m/s (40013.76km/h)
 Lowest acceleration      : 0.00m/s^2 (0.00g)
 Hightest acceleration    : 33.20m/s^2 (3.38g)
-Rocket trajectory length : 794408.553km
-Earth trajectory length  : 8009.273km
-Moon trajectory length   : 650994.930km
+Rocket trajectory length : 798481.650km
+Earth trajectory length  : 7970.830km
+Moon trajectory length   : 647870.251km
 ```
 
 This picture shows take off and landing of the Rocket.
