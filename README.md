@@ -2,6 +2,8 @@
 
 # Froggy
 
+This repository contains the example code to ["Fly Me To The Moon"](https://medium.com/@malik.kirchner/fly-me-to-the-moon-195f853dd708).
+
 ## Build and test
 
 Install Conan according to the instructions at [docs.conan.io](https://docs.conan.io/en/latest/installation.html).
